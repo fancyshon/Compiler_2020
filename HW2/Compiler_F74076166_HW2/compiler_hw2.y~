@@ -1,0 +1,225 @@
+/*	Definition section */
+%{
+    #include "common.h" //Extern variables that communicate with lex
+    // #define YYDEBUG 1
+    // int yydebug = 1;
+
+    extern int yylineno;
+    extern int yylex();
+    extern FILE *yyin;
+
+    void yyerror (char const *s)
+    {
+        printf("error:%d: %s\n", yylineno, s);
+    }
+
+
+    /* Symbol table function - you can add new function if needed. */
+    static void create_symbol();
+    static void insert_symbol(char* s,char* type ,int index ,int line);
+    static void lookup_symbol(char* target);
+    static void dump_symbol();
+
+    struct data{
+        int address;
+        //0 => int , 1 => float
+
+        int int_value;
+        double float_val;
+
+        char name[10];
+        char type[10];
+
+        int lineno;
+
+    } symbol_table[100];
+
+    int addr=0;
+    int tableSize = 0;
+%}
+
+%error-verbose
+
+/* Use variable or self-defined structure to represent
+ * nonterminal and token type
+ */
+%union {
+    int i_val;
+    float f_val;
+    char *s_val;
+}
+
+/* Token without return */
+%token INT FLOAT BOOL STRING ADD SUB MUL DIV INC DEC
+%token SEMICOLON ASSIGN
+%token FIN
+
+/* Token with return, which need to sepcify type */
+%token <i_val> INT_LIT
+%token <f_val> FLOAT_LIT
+%token <s_val> STRING_LIT
+%token <s_val> IDENT
+
+
+/* Nonterminal with return, which need to sepcify type */
+%type <f_val> Expression
+%type <f_val> term factor 
+
+/* Yacc will start at this nonterminal */
+%start Program
+
+/* Grammar section */
+%%
+
+Program
+    : 
+    | Program Statement
+;
+
+// Type
+//     : TypeName { $$ = $1; }
+// ;
+
+TypeName
+    : INT
+    | FLOAT
+    | STRING
+    | BOOL
+;
+
+Literal
+    : INT_LIT {
+        printf("INT_LIT %d\n", $<i_val>$);
+    }
+    | FLOAT_LIT {
+        printf("FLOAT_LIT %f\n", $<f_val>$);
+    }
+    
+;
+
+Statement
+    : DeclarationStmt
+    | Assign
+    | Expression SEMICOLON
+    // | Block
+    // | IfStmt
+    // | LoopStmt
+    // | PrintStmt
+;
+
+DeclarationStmt
+    : INT IDENT Val {
+        insert_symbol($2,"int",addr,yylineno);       
+        addr++;
+    }
+;
+
+Val
+    : SEMICOLON
+    | ASSIGN Expression SEMICOLON
+
+Assign
+    : IDENT ASSIGN Expression SEMICOLON
+
+Expression
+    : term {
+        $$ = $1;
+    }
+    | Expression '+' term {
+        $$ = $1 + $3;
+        printf("ADD\n");
+    }
+    | Expression '-' term{
+        $$ = $1 - $3;
+        printf("SUB\n");
+    }
+    
+    
+
+term
+    : factor {
+        $$ = $1;
+    }
+    | Expression '*' factor {
+        $$ = $1 * $3;
+        printf("MUL\n");
+    }
+    | Expression '/' factor{
+        $$ = $1 / $3;
+        printf("QUO\n");
+    }
+    | Expression '%' factor {
+        $$ = (int)$1 % (int)$3;
+        printf("REM\n");
+    }
+    | Expression INC {
+        $$ = $1++;
+        printf("INC\n");
+    }
+    | Expression DEC {
+        $$ = $1--;
+        printf("DEC\n");
+    }
+    
+
+
+factor
+    : Literal
+    | IDENT {
+        lookup_symbol($1);
+    }
+
+%%
+
+/* C code section */
+int main(int argc, char *argv[])
+{
+    if (argc == 2) {
+        yyin = fopen(argv[1], "r");
+    } else {
+        yyin = stdin;
+    }
+
+    yyparse();
+
+    dump_symbol();
+	printf("Total lines: %d\n", yylineno);
+    fclose(yyin);
+    return 0;
+}
+
+void insert_symbol(char* s,char* type ,int index,int line){
+    strcpy(symbol_table[index].name,s);
+    strcpy(symbol_table[index].type,type);
+    symbol_table[index].lineno=line;
+    tableSize++;
+    symbol_table[index].address=index;
+
+    printf("> Insert {%s} into symbol table (scope level: 0)\n",s);
+}
+
+void lookup_symbol(char* target){
+    int i;
+
+    for(i=0;i<100;++i){
+        if(strcmp(symbol_table[i].name,target)==0){
+            printf("IDENT (name=%s, address=%d)\n",target,i);
+            return;
+        }
+    }
+}
+
+void dump_symbol(){
+    int i ;
+
+    printf("> Dump symbol table (scope level: %d)\n", 0);
+    printf("%-10s%-10s%-10s%-10s%-10s%s\n", "Index", "Name", "Type", "Address", "Lineno", "Element type");
+    for(i = 0;i<tableSize;++i){
+        printf("%-10d%-10s%-10s%-10d%-10d",i , symbol_table[i].name ,symbol_table[i].type ,symbol_table[i].address, symbol_table[i].lineno);
+        if(strcmp("array",symbol_table[i].type) == 0)
+            printf("Element type\n");
+        else 
+            printf("-\n");
+    }
+
+}
